@@ -9,7 +9,7 @@ differentiable simulator: the policy gradient comes from the simulator itself, w
 - **One GPU, one command.** Training runs on [NablaEngine](https://github.com/OamIcs/NablaEngine), a fused
   differentiable engine for the G1, or on MuJoCo Warp.
 
-Paper: *coming soon*. Project page: https://sailab.ai/nablamimic/
+**Paper.** [∇Mimic: Ultra-Efficient Humanoid Control with Differentiable Simulation](https://sailab.ai/nablamimic/assets/nablamimic.pdf) ([project page](https://sailab.ai/nablamimic/))
 
 ## Installation
 
