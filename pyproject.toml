@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nablamimic"
+dynamic = ["version"]  # nablamimic.__version__
+description = "NablaMimic: whole-body motion tracking for the Unitree G1 by backpropagation through a differentiable simulator"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"]
+authors = [{name = "The NablaMimic Authors"}]
+requires-python = ">=3.12"
+classifiers = [
+    "Environment :: GPU :: NVIDIA CUDA :: 12",
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+# The tested versions (requirements-lock.txt). MuJoCo Warp is the patched editable tree of scripts/setup_mujoco_warp.sh
+# and warp-lang the CUDA 12 build of the NVIDIA/warp release (scripts/setup_env.sh installs both).
+dependencies = [
+    "jax[cuda12]==0.12.0.1",
+    "mujoco==3.17.0",
+    "mujoco-mjx==3.17.0",
+    "optax==0.2.8",
+    "numpy>=2.0",
+    "scipy",
+    "warp-lang==1.18.0",
+]
+
+[project.optional-dependencies]
+engine = ["nablaengine[jax] @ git+https://github.com/OamIcs/NablaEngine.git@c61a6fe7f5ec47c7f4f9b0a4c055d60cbe40807c"]  # NablaEngine (--physics engine, ppo.py)
+data = ["huggingface_hub"]  # scripts/download_lafan1.sh, scripts/download_bones_seed.sh
+test = ["pytest"]
+
+[project.urls]
+Repository = "https://github.com/OamIcs/NablaMimic"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.dynamic]
+version = {attr = "nablamimic.__version__"}
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

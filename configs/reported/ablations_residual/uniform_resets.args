@@ -1,0 +1,5 @@
+# Ablation of configs/ours.args (residual actions): uniform resets instead of return-based reset sampling; 1.5 h.
+@../../base/ours.args
+--physics engine --reset-sampling uniform
+--hours 1.5
+--residual-action

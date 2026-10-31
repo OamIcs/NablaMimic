@@ -1,0 +1,12 @@
+# data, run outputs, caches and local checkouts (never part of the repository)
+data/
+runs/
+third_party/
+.venv/
+__pycache__/
+*.egg-info/
+*.pkl
+*.npz
+*.npy
+*.so
+*.csv

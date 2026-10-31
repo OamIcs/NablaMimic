@@ -1,0 +1,6 @@
+# NablaMimic on NablaEngine with absolute actions, the recipe of the reported comparisons with SHAC, PPO and
+# SuperMimic (their action space: joint setpoints = the default pose plus the scaled action), 3 h of training as
+# reported. The recommended configs/ours.args is this recipe with residual actions.
+@../base/ours.args
+--physics engine
+--hours 3

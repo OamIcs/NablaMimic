@@ -1,0 +1,6 @@
+# SHAC with changed guards on NablaEngine, 3 h of training as reported: an update whose actor gradient norm is
+# non-finite is skipped instead of stopping training, a large finite norm is applied, and the gradient is also clipped
+# element-wise at 0.1 (as for NablaMimic). Otherwise as shac.args.
+@base/shac.args
+--physics engine
+--hours 3

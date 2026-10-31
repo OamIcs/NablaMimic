@@ -1,0 +1,5 @@
+# SHAC (published guard, see shac.args) on MuJoCo Warp with the backward conventions of configs/ours_mjw.args; stops
+# at SHAC's gradient guard, at the latest after 3 h.
+@base/shac.args
+--physics warp --no-remat --mjw-adj-normal 3 --mjw-adj-parallel 1 --mjw-ift-solve 1 --shac-strict
+--hours 3

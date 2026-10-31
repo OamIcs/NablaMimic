@@ -1,0 +1,5 @@
+# The patched MuJoCo Warp tree: etaoxing/mujoco_warp 4af093f02a3f48f0009ca7c916674b928136f310 (357a75d with
+# etaoxing/mujoco_warp#1) with 0001, 0002, 0003, 0004 (git apply), in that order. The hash, in the tree root:
+#   find mujoco_warp -type f -name '*.py' | LC_ALL=C sort | xargs sha256sum | sha256sum
+# (scripts/setup_mujoco_warp.sh checks it).
+22beb14349b77adc76c91d631771afefb71ef0a725c39cff8d7088f884d5ea50

@@ -1,0 +1,12 @@
+# Ablation of configs/ours.args (residual actions): as configs/reported/ablations/no_pods.args with residual actions; 1.5 h.
+--seed 0 --clips all --num-envs 4096 --horizon 64 --solver-iterations 10
+--reset-sampling supermimic --uniform-over bins
+--replay-steps 1000 --collect-envs 4096 --collect-noise 0.1 --utd 0.4
+--mask-after-done --critic-pre-state --term-penalty 2 0.08 0.10
+--act-noise 0.05 --act-cot-clip 3
+--anchor-to-decoder --enc-hoist on
+--lr 2e-4 --iters 400000 --lr-warmup-steps 500 --lr-decay-to 0.1 --lr-decay-steps 16000
+--ckpt-every 250
+--physics engine
+--hours 1.5
+--residual-action

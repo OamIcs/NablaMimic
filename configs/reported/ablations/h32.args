@@ -1,0 +1,4 @@
+# Ablation of configs/reported/ours_absolute.args: H=32 windows instead of 64; 1.5 h.
+@../../base/ours.args
+--physics engine --horizon 32
+--hours 1.5

@@ -1,0 +1,5 @@
+# SHAC with changed guards (see shac_guard_changes.args) on MuJoCo Warp with the backward conventions of
+# configs/ours_mjw.args, 3 h of training as reported.
+@base/shac.args
+--physics warp --no-remat --mjw-adj-normal 3 --mjw-adj-parallel 1 --mjw-ift-solve 1
+--hours 3

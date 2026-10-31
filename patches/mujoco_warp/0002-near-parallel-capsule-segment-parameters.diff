@@ -1,0 +1,62 @@
+diff --git a/mujoco_warp/_src/collision_primitive_core.py b/mujoco_warp/_src/collision_primitive_core.py
+index 7105e4a0e50101a410fbec5bad693f9ef72e01cb..3b8a05301460ea3092344119288d9d23483c2760 100644
+--- a/mujoco_warp/_src/collision_primitive_core.py
++++ b/mujoco_warp/_src/collision_primitive_core.py
+@@ -56,6 +56,32 @@ def _adj_contact_normal(dir: wp.vec3, length: float, adj_ret: wp.vec3):
+     wp.adjoint[dir] += adj_ret * (scale / length)
+     wp.adjoint[length] += -scale * wp.dot(adj_ret, dir) / (length * length)
+ 
++
++# Switch of patch 0002 (the fused engine's convention): how the backward
++# differentiates the segment parameters x1, x2 of a capsule-capsule contact whose closest points both lie inside the
++# segments (no clamp) when the axes are nearly parallel. There the closest points slide along the axes with derivatives
++# of order |dif| / sin^2(theta) (a tilt of one axis), the normal turns with 1 / sin(theta), and the backward's
++# 1 / det (det = ma mc - mb^2 ~ sin^2(theta)) gives gradients of that size (about 0.1 / sin^2 times the cotangent per
++# control step on the G1's feet), which in a BPTT window push the cotangent past what the IFT solve takes (NaN).
++# Read at import: MJW_ADJ_PARALLEL = 0 exact (MuJoCo Warp), 1 x1, x2 held constant in the backward where both are
++# free and sin^2(theta) = |axis1 x axis2|^2 / (|axis1|^2 |axis2|^2) < MJW_ADJ_PARALLEL_EPS (default 1.2e-3, about
++# sin^2(2 degrees)); the contact then moves with the two material points, the distance's derivative is unchanged
++# (envelope theorem). The forward is the same in every mode.
++ADJ_PARALLEL = wp.constant(int(os.environ.get("MJW_ADJ_PARALLEL", "0")))
++ADJ_PARALLEL_EPS = wp.constant(float(os.environ.get("MJW_ADJ_PARALLEL_EPS", "1.2e-3")))
++
++
++@wp.func
++def _segment_param(x: float, frozen: int) -> float:
++  return x
++
++
++@wp.func_grad(_segment_param)
++def _adj_segment_param(x: float, frozen: int, adj_ret: float):
++  # exact: the identity's adjoint; frozen: none (x is a constant of the backward)
++  if frozen == 0:
++    wp.adjoint[x] += adj_ret
++
+ wp.set_module_options({"enable_backward": False})
+ 
+ 
+@@ -205,6 +231,13 @@ def capsule_capsule(
+     x1 = (mc * u - mb * v) * inv_det
+     x2 = (ma * v - mb * u) * inv_det
+ 
++    # patch 0002: near parallel with both parameters free (the clamps below leave them as they are)
++    frozen = int(0)
++    if ADJ_PARALLEL == 1:
++      if x1 >= -1.0 and x1 <= 1.0 and x2 >= -1.0 and x2 <= 1.0:
++        if wp.length_sq(wp.cross(axis1, axis2)) < ADJ_PARALLEL_EPS * ma * mc:
++          frozen = 1
++
+     if x1 > 1.0:
+       x1 = 1.0
+       x2 = (v - mb) / mc
+@@ -219,6 +252,10 @@ def capsule_capsule(
+       x2 = -1.0
+       x1 = wp.clamp((u + mb) / ma, -1.0, 1.0)
+ 
++    if ADJ_PARALLEL == 1:  # x1, x2 unchanged; their adjoint dropped where frozen (patch 0002)
++      x1 = _segment_param(x1, frozen)
++      x2 = _segment_param(x2, frozen)
++
+     # find nearest points
+     vec1 = cap1_pos + axis1 * x1
+     vec2 = cap2_pos + axis2 * x2

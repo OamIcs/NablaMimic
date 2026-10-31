@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "NablaMimic"
+abstract: >-
+  Whole-body motion tracking for the Unitree G1 (mjlab model), trained by backpropagation through a differentiable
+  simulator (NablaEngine or a patched MuJoCo Warp), with SHAC and PPO baselines, the nominal LAFAN1 evaluation and
+  the BONES-SEED benchmark.
+authors:
+  - name: "The NablaMimic Authors"
+version: 0.1.0
+license: Apache-2.0
+repository-code: "https://github.com/OamIcs/NablaMimic"
+keywords:
+  - motion tracking
+  - humanoid
+  - differentiable simulation
+  - reinforcement learning
+  - JAX
+  - MuJoCo

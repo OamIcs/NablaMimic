@@ -1,0 +1,16 @@
+# Ablation of the absolute-action recipe of the reported comparisons (configs/reported/ours_absolute.args) without
+# PODS-style action targets: every update the actor takes one Adam step on its own window gradient (learning rate 2e-4
+# with the same warmup and decay), and each step's action cotangent is still clipped per sample to 3x the batch median
+# in the backward. The window is rematerialized in the backward (no --no-remat): the gradient through 64 steps x 4096
+# environments with every step's residuals does not fit in 96 GB. 1.5 h of training as reported. Written out in full
+# (a configuration file cannot remove an included option); otherwise as configs/base/ours.args.
+--seed 0 --clips all --num-envs 4096 --horizon 64 --solver-iterations 10
+--reset-sampling supermimic --uniform-over bins
+--replay-steps 1000 --collect-envs 4096 --collect-noise 0.1 --utd 0.4
+--mask-after-done --critic-pre-state --term-penalty 2 0.08 0.10
+--act-noise 0.05 --act-cot-clip 3
+--anchor-to-decoder --enc-hoist on
+--lr 2e-4 --iters 400000 --lr-warmup-steps 500 --lr-decay-to 0.1 --lr-decay-steps 16000
+--ckpt-every 250
+--physics engine
+--hours 1.5

@@ -1,0 +1,5 @@
+# Ablation of configs/ours.args (residual actions): no replay starts (windows continue from the previous window's end state); 1.5 h.
+@../../base/ours.args
+--physics engine --replay-steps 0 --collect-envs 0
+--hours 1.5
+--residual-action

@@ -1,0 +1,114 @@
+diff --git a/mujoco_warp/_src/forward_adjoint.py b/mujoco_warp/_src/forward_adjoint.py
+index 8816670cd209b7024cde59a86a899ae8d1f65293..fc7de25dce2d3e911ec7162d8e0250a7767637b4 100644
+--- a/mujoco_warp/_src/forward_adjoint.py
++++ b/mujoco_warp/_src/forward_adjoint.py
+@@ -35,9 +35,18 @@ from mujoco_warp._src.types import Data
+ # Switch of patch 0001: MJW_CLAMP_KV_FIX=1 at import drops the actuator damping of clamped dofs from the qvel VJP
+ # (clamped_actuator_qvel_backward); unset keeps the original behaviour.
+ CLAMP_KV_FIX = os.environ.get("MJW_CLAMP_KV_FIX", "0") == "1"
++# Switch of patch 0003 (the fused engine's soft clamp): MJW_CLAMP_SOFT=delta > 0 at
++# import makes the clamp's derivative soft, a surrogate gradient: on a dof whose joint actuator force is clamped by
++# actuatorfrcrange, actuator_lam gives w lam instead of 0 (qpos and ctrl paths, etaoxing/mujoco_warp#1 commit 4af093f)
++# and the qvel path keeps kv w lam (patch 0001's MJW_CLAMP_KV_FIX correction with that lam, applied whatever
++# MJW_CLAMP_KV_FIX says), w = exp(-o / delta) with o >= 0 the overshoot of the unclamped dof force beyond the bound it
++# is clamped to, relative to that bound. w = 1 at the bound, delta -> 0 gives MJW_CLAMP_KV_FIX=1. Unset or 0: off, the
++# behaviour of patch 0001. The forward is unchanged.
++CLAMP_SOFT = float(os.environ.get("MJW_CLAMP_SOFT", "0"))
+ from mujoco_warp._src.types import DisableBit
+ from mujoco_warp._src.types import IntegratorType
+ from mujoco_warp._src.types import JointType
++from mujoco_warp._src.types import MJ_MINVAL
+ from mujoco_warp._src.types import Model
+ from mujoco_warp._src.types import vec10
+ from mujoco_warp._src.warp_util import event_scope
+@@ -201,6 +210,60 @@ def _clamped_actuator_qvel_vjp(
+     wp.atomic_add(adj_qvel_out[worldid], moment_colind_in[worldid, elemid], -b2 * actuator_moment_in[worldid, elemid] * mu)
+ 
+ 
++@wp.kernel(enable_backward=False)
++def _actuator_lam_soft(
++  # Model:
++  nu: int,
++  jnt_actfrclimited: wp.array[bool],
++  jnt_actgravcomp: wp.array[int],
++  jnt_actfrcrange: wp.array2d[wp.vec2],
++  dof_jntid: wp.array[int],
++  # Data in:
++  moment_rownnz_in: wp.array2d[int],
++  moment_rowadr_in: wp.array2d[int],
++  moment_colind_in: wp.array2d[int],
++  actuator_moment_in: wp.array2d[float],
++  actuator_force_in: wp.array2d[float],
++  qfrc_gravcomp_in: wp.array2d[float],
++  qfrc_actuator_in: wp.array2d[float],
++  # In:
++  gravity_enabled: bool,
++  clamp_soft: float,
++  lam: wp.array2d[float],
++  # Out:
++  lam_out: wp.array2d[float],
++):
++  """Patch 0003 (CLAMP_SOFT > 0): scales the multiplier on dofs whose joint actuator force is clamped by w.
++
++  The clamp test is _actuator_lam's. The unclamped force of the dof is the forward's (fwd_actuation): the actuators'
++  moment-weighted forces summed into the dof (_qfrc_actuator), plus the actuator-level gravity compensation, before the
++  actuatorfrcrange clamp (_qfrc_actuator_gravcomp_limits). o = (f - hi) / |hi| on the upper bound, (lo - f) / |lo| on the
++  lower, clipped at 0, and w = exp(-o / clamp_soft).
++  """
++  worldid, dofid = wp.tid()
++  value = lam[worldid, dofid]
++  jntid = dof_jntid[dofid]
++  if jnt_actfrclimited[jntid]:
++    frcrange = jnt_actfrcrange[worldid % jnt_actfrcrange.shape[0], jntid]
++    qfrc = qfrc_actuator_in[worldid, dofid]
++    if qfrc <= frcrange[0] or qfrc >= frcrange[1]:
++      f = float(0.0)
++      for actid in range(nu):
++        rowadr = moment_rowadr_in[worldid, actid]
++        for i in range(moment_rownnz_in[worldid, actid]):
++          if moment_colind_in[worldid, rowadr + i] == dofid:
++            f += actuator_moment_in[worldid, rowadr + i] * actuator_force_in[worldid, actid]
++      if gravity_enabled and jnt_actgravcomp[jntid]:
++        f += qfrc_gravcomp_in[worldid, dofid]
++      over = float(0.0)
++      if qfrc >= frcrange[1]:
++        over = (f - frcrange[1]) / wp.max(wp.abs(frcrange[1]), MJ_MINVAL)
++      else:
++        over = (frcrange[0] - f) / wp.max(wp.abs(frcrange[0]), MJ_MINVAL)
++      value = wp.exp(-wp.max(over, 0.0) / clamp_soft) * value
++  lam_out[worldid, dofid] = value
++
++
+ def clamped_actuator_qvel_backward(m: Model, d_out: Data, lam: wp.array, adj_qvel: wp.array, bc: BackwardContext):
+   """Call after _smooth_qvel_vjp: drops the actuator damping of clamped dofs from adj_qvel (see the kernel)."""
+   if not m.nu:
+@@ -216,9 +279,19 @@ def clamped_actuator_qvel_backward(m: Model, d_out: Data, lam: wp.array, adj_qve
+ 
+ 
+ def actuator_lam(m: Model, d_out: Data, lam: wp.array, bc: BackwardContext) -> wp.array:
+-  """Returns lam with the dofs whose joint actuator force is clamped zeroed."""
++  """Returns lam with the dofs whose joint actuator force is clamped zeroed (CLAMP_SOFT > 0: scaled by w)."""
+   if not m.nu:
+     return lam
++  if CLAMP_SOFT > 0.0:
++    wp.launch(
++      _actuator_lam_soft,
++      dim=(d_out.nworld, m.nv),
++      inputs=[m.nu, m.jnt_actfrclimited, m.jnt_actgravcomp, m.jnt_actfrcrange, m.dof_jntid, d_out.moment_rownnz,
++              d_out.moment_rowadr, d_out.moment_colind, d_out.actuator_moment, d_out.actuator_force, d_out.qfrc_gravcomp,
++              d_out.qfrc_actuator, not (m.opt.disableflags & DisableBit.GRAVITY), CLAMP_SOFT, lam],
++      outputs=[bc.actuator_lam],
++    )
++    return bc.actuator_lam
+   wp.launch(
+     _actuator_lam,
+     dim=(d_out.nworld, m.nv),
+@@ -417,7 +490,7 @@ def smooth_qvel_backward(m: Model, d: Data, d_out: Data, lam: wp.array, adj_qvel
+     inputs=[m.opt.timestep, m.qD_fullm_i, m.qD_fullm_j, bc.qLU, bc.M_D, lam],
+     outputs=[adj_qvel],
+   )
+-  if CLAMP_KV_FIX:
++  if CLAMP_KV_FIX or CLAMP_SOFT > 0.0:  # patch 0003: the soft clamp keeps kv w lam (actuator_lam's)
+     clamped_actuator_qvel_backward(m, d_out, lam, adj_qvel, bc)
+   if m.nu and d.ctrl.requires_grad:
+     wp.launch(

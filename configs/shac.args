@@ -1,0 +1,7 @@
+# SHAC (published guard) on NablaEngine: the actor's gradient is clipped by its global norm only, and training stops
+# at SHAC's own exploding-gradient guard, the first update whose actor gradient norm is non-finite or above 1e6 (that
+# update is not applied; OUT/HALTED records it), at the latest after 3 h. The windows are rematerialized in the backward
+# (no --no-remat): the engine's remat policy keeps only its step tapes.
+@base/shac.args
+--physics engine --shac-strict
+--hours 3

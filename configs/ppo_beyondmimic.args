@@ -1,0 +1,4 @@
+# BeyondMimic-style PPO: MLP actor and critic 512-256-128, BeyondMimic's adaptive failure sampling over 1 s bins,
+# 4096 environments.
+@base/ppo.args
+--arch mlp --hidden 512 256 128 --num-envs 4096 --reset-sampling beyondmimic

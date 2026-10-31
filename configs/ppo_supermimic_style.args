@@ -1,0 +1,4 @@
+# PPO with SuperMimic-style choices: SuperMimic's encoder-decoder actor (2048-1024-512-256, latent 32; the whole goal
+# into the encoder), critic 256-128, return-based reset sampling over 1 s bins, 8192 environments.
+@base/ppo.args
+--arch supermimic --critic-hidden 256 128 --num-envs 8192 --reset-sampling supermimic

@@ -1,0 +1,4 @@
+# sha256 of the BONES-SEED files the library is converted from (bones-studio/seed, revision 2f59b2077b9da34dd4e43618e705c7cb962c9a66);
+# checksums only, no data (scripts/download_bones_seed.sh checks them)
+52580ea8bced72ea9e2ff1e7b68f01c51c7f1099581e9a46b7c87e1dec106d8a  g1.tar.gz
+71d09422034946d17dbb0db027d569408c486545bdb12f7979d55e6ffd9bbc39  metadata/seed_metadata_v004.csv

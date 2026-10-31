@@ -1,0 +1,11 @@
+# NablaMimic on BONES-SEED (SuperMimic's filtered training set, 129,418 motions) on NablaEngine with the residual
+# actions of configs/ours.args, 6 h of training. Working sets of 8 library shards are swapped every 2000 updates; the
+# learning rate and the action-target step decay over 52000 updates. The critic's bootstrap values are clipped to the
+# largest possible return (--v-bound) and an episode end at a clip end bootstraps with the value of the transition's
+# start state (--clip-end-boot pre): BONES-SEED's clips are shorter on average than an episode, and in our runs
+# without the bound, the critic's values ran past it and training diverged. Give the converted library on the command
+# line:
+# --motion-lib DATA/lib50 (scripts/download_bones_seed.sh).
+@base/ours.args
+--physics engine --residual-action --ws-shards 8 --ws-swap 2000 --lr-decay-steps 52000 --v-bound --clip-end-boot pre
+--hours 6

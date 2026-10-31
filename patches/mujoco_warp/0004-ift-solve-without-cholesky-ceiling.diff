@@ -1,0 +1,138 @@
+diff --git a/mujoco_warp/_src/adjoint.py b/mujoco_warp/_src/adjoint.py
+index b514fc0f441bdf57fb64a021bb725d885ecb9224..9b4ae25e9a822c6e79dca63f667632058596cb7b 100644
+--- a/mujoco_warp/_src/adjoint.py
++++ b/mujoco_warp/_src/adjoint.py
+@@ -12,6 +12,8 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ # ==============================================================================
++# Modified from the original MuJoCo Warp source: backward-pass switches read from MJW_* environment variables at
++# import (patches 0001-0004, see their README); the forward is unchanged.
+ """Analytic backward for step() via hybrid analytic differentiability.
+ 
+ This modules uses implicit differentiation, auto-differentiation, and custom analytic
+@@ -22,6 +24,8 @@ reverse mode solves H * lam = adj_qacc and accumulates adj_theta = -(dr/dtheta)^
+ import contextlib
+ import contextvars
+ import dataclasses
++import functools
++import os
+ 
+ import warp as wp
+ 
+@@ -43,13 +47,24 @@ from mujoco_warp._src.types import DisableBit
+ from mujoco_warp._src.types import EnableBit
+ from mujoco_warp._src.types import IntegratorType
+ from mujoco_warp._src.types import Model
++from mujoco_warp._src.types import SolverContext
+ from mujoco_warp._src.types import SolverType
++from mujoco_warp._src.types import TILE_SIZE_JTDAJ_DENSE
+ from mujoco_warp._src.warp_util import event_scope
+ from mujoco_warp._src.warp_util import is_array_spec
+ 
+ # These kernels differentiate through @wp.funcs defined in other modules.
+ wp.set_module_options({"enable_backward": True})
+ 
++# Switch of patch 0004: MJW_IFT_SOLVE at import selects solve_backward's IFT solve
++# for nv > 32. Unset or 0: the original, the Newton solver's blocked Cholesky, which factors H with the right-hand side
++# b as an augmented border and the corner set to 1e30 (block_cholesky), so the corner pivot sqrt(1e30 - |U^-T b|^2) is
++# NaN once |U^-T adj_qacc| > 1e15 and the back substitution spreads it to every dof. 1: the same solve of b / s, s the
++# power of two >= max |b| (1 when max |b| <= 1), its solution times s: a power of two scales every rounding step
++# exactly, so bitwise the original wherever that is finite. 2: no border (factorize, then forward and back
++# substitution: block_cholesky.create_blocked_cholesky_factorize_solve_func). The forward is unchanged in every setting.
++IFT_SOLVE = int(os.environ.get("MJW_IFT_SOLVE", "0"))
++
+ _ACTIVE_BACKWARD_CONTEXT: contextvars.ContextVar[BackwardContext | None] = contextvars.ContextVar(
+   "mjw_active_backward_context",
+   default=None,
+@@ -151,11 +166,90 @@ def _load_rhs(nv: int, adj_qacc: wp.array2d[float], grad_out: wp.array2d[float])
+   grad_out[worldid, i] = -adj_qacc[worldid, i] if i < nv else 0.0
+ 
+ 
++@functools.lru_cache(maxsize=None)
++def _ift_kernels():
++  """Patch 0004's kernels, made on first use (with MJW_IFT_SOLVE unset this module's kernels are the original ones)."""
++
++  @wp.func
++  def rhs_scale(nv: int, adj_qacc: wp.array2d[float], worldid: int):
++    # the power of two s >= max |adj_qacc| (1 when that is at most 1): b / s and x s round exactly
++    amax = float(0.0)
++    for i in range(nv):
++      amax = wp.max(amax, wp.abs(adj_qacc[worldid, i]))
++    scale = float(1.0)
++    while scale < amax:
++      scale = 2.0 * scale
++    return scale
++
++  @wp.kernel(module="unique", enable_backward=False)
++  def load_rhs_scaled(nv: int, adj_qacc: wp.array2d[float], grad_out: wp.array2d[float]):
++    worldid, i = wp.tid()
++    if i < nv:
++      grad_out[worldid, i] = -adj_qacc[worldid, i] / rhs_scale(nv, adj_qacc, worldid)
++    else:
++      grad_out[worldid, i] = 0.0
++
++  @wp.kernel(module="unique", enable_backward=False)
++  def unscale_solution(
++    nv: int,
++    adj_qacc: wp.array2d[float],
++    grad: wp.array2d[float],
++    search: wp.array2d[float],
++    search_dot: wp.array[float],
++    newton_decrement: wp.array[float],
++  ):
++    worldid, i = wp.tid()
++    # the solve's outputs as the original's: grad = -adj_qacc, search = lam, search_dot and the decrement times s^2
++    scale = rhs_scale(nv, adj_qacc, worldid)
++    grad[worldid, i] = grad[worldid, i] * scale
++    search[worldid, i] = search[worldid, i] * scale
++    if i == 0:
++      search_dot[worldid] = search_dot[worldid] * scale * scale
++      newton_decrement[worldid] = newton_decrement[worldid] * scale * scale
++
++  @wp.kernel(module="unique", enable_backward=False)
++  def negate(x: wp.array2d[float], out: wp.array2d[float]):
++    worldid, i = wp.tid()
++    out[worldid, i] = -x[worldid, i]
++
++  return load_rhs_scaled, unscale_solution, negate
++
++
++def _solve_backward_ift(m: Model, d_out: Data, adj_qacc: wp.array, solver_ctx: SolverContext):
++  """Patch 0004 (MJW_IFT_SOLVE 1 or 2, nv > 32): the IFT solve without the augmented factorization's ceiling."""
++  load_rhs_scaled, unscale_solution, negate = _ift_kernels()
++  nworld = d_out.nworld
++  if IFT_SOLVE == 1:
++    wp.launch(load_rhs_scaled, dim=(nworld, m.nv_pad), inputs=[m.nv, adj_qacc], outputs=[solver_ctx.grad])
++    solver._cholesky_factorize_solve(m, d_out, solver_ctx)
++    wp.launch(
++      unscale_solution,
++      dim=(nworld, m.nv),
++      inputs=[m.nv, adj_qacc],
++      outputs=[solver_ctx.grad, solver_ctx.search, solver_ctx.search_dot, solver_ctx.newton_decrement],
++    )
++    return
++  # solves H x = -adj_qacc in place in grad (the factorization reads all of b before it writes x), lam = -x
++  wp.launch(_load_rhs, dim=(nworld, m.nv_pad), inputs=[m.nv, adj_qacc], outputs=[solver_ctx.grad])
++  grad = solver_ctx.grad.reshape(shape=(nworld, solver_ctx.grad.shape[1], 1))
++  wp.launch_tiled(
++    solver._cholesky_factorize_solve_blocked(TILE_SIZE_JTDAJ_DENSE, m.nv_pad),
++    dim=nworld,
++    inputs=[solver_ctx.h, grad],
++    outputs=[solver_ctx.hfactor, grad],
++    block_dim=m.block_dim.update_gradient_cholesky_blocked,
++  )
++  wp.launch(negate, dim=(nworld, m.nv), inputs=[solver_ctx.grad], outputs=[solver_ctx.search])
++
++
+ @event_scope
+ def solve_backward(m: Model, d_out: Data, adj_qacc: wp.array, bc: BackwardContext):
+   """Solves ``H * lam = adj_qacc`` at the converged acceleration."""
+   solver_ctx = bc.solver_ctx
+   solver.init_context(m, d_out, solver_ctx, grad=True)
++  if IFT_SOLVE and m.nv > solver._BLOCK_CHOLESKY_DIM:
++    _solve_backward_ift(m, d_out, adj_qacc, solver_ctx)
++    return solver_ctx
+   wp.launch(_load_rhs, dim=(d_out.nworld, m.nv_pad), inputs=[m.nv, adj_qacc], outputs=[solver_ctx.grad])
+   solver._cholesky_factorize_solve(m, d_out, solver_ctx)
+   return solver_ctx

@@ -1,0 +1,8 @@
+# NablaMimic on MuJoCo Warp (patched, see patches/mujoco_warp) with residual actions, the method of configs/ours.args on
+# the other simulator, 3 h of training. The backward uses the same gradient conventions as NablaEngine (self-contact
+# normal held constant below 1 mm, segment parameters of near-parallel capsules held constant), plus the
+# scaled right-hand side of patch 0004 in the adjoint's IFT solve; the two simulators' forward passes are separate
+# implementations. The absolute-action recipe of the reported comparisons: configs/reported/ours_absolute_mjw.args.
+@base/ours.args
+--physics warp --mjw-adj-normal 3 --mjw-adj-parallel 1 --mjw-ift-solve 1 --residual-action
+--hours 3

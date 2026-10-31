@@ -1,0 +1,9 @@
+# SHAC (Xu et al. 2022, arXiv:2204.07137) at the scale of NablaMimic: the same environment, actor (encoder-decoder
+# 2048-1024-512-256), critic, 4096 environments, learning-rate schedule and action noise. SHAC's algorithm: H = 32
+# windows continued across updates (no replay, no collector), one Adam step on the actor's window gradient (no action
+# targets, no per-sample clipping, no termination penalty), TD(lambda = 0.95) critic, empirical observation
+# normalization, uniform reset sampling over frames. The including file chooses the simulator.
+--seed 0 --clips all --num-envs 4096 --horizon 32 --solver-iterations 10
+--reset-sampling uniform --actor-obs-norm --act-noise 0.05
+--lr 2e-4 --iters 400000 --lr-warmup-steps 500 --lr-decay-to 0.1 --lr-decay-steps 16000
+--ckpt-every 250

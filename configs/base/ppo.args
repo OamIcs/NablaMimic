@@ -1,0 +1,9 @@
+# PPO (Schulman et al. 2017, arXiv:1707.06347), an independent JAX implementation following rsl_rl's PPO with the
+# BeyondMimic / mjlab motion-tracking settings: 24 steps per environment per iteration, 5 epochs x 4 minibatches, one
+# Adam over actor and critic with the adaptive-KL learning rate (target 0.01), clip 0.2, clipped value loss, entropy
+# 0.005, GAE(0.99, 0.95). The same environment and engine forward as NablaMimic; 6 h of training as reported.
+# Checkpoints by wall clock: every 2 min in the first hour, then every 15 min.
+--seed 0 --clips all --solver-iterations 10
+--steps 24 --epochs 5 --minibatches 4 --lr 1e-3 --desired-kl 0.01 --clip 0.2 --value-coef 1 --entropy 0.005
+--gamma 0.99 --lam 0.95 --max-grad-norm 1 --init-std 1 --max-episode-steps 500
+--hours 6 --ckpt-minutes 15 --ckpt-dense 1 2
